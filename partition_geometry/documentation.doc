@@ -1,4 +1,5 @@
-Plugin 'Quadtree' converts a spatial database table into a partitioned table
+Plugin 'Partition Geometry' converts a spatial database table into a
+partitioned table
 
 Example:
   -- create a test-table for demonstration
@@ -9,7 +10,7 @@ Example:
   select AddGeometryColumn('test', 'way', 900913, 'GEOMETRY', 2);
 
   -- convert table into a partitioned table
-  select quadtree_init_table('test');
+  select partition_geometry_init_table('test');
   
   -- TODO: currently the old content is not moved to the subtables yet
 
@@ -37,12 +38,13 @@ The following tables and function will be created:
 			     ... place a query on test
 
 The following general tables and functions are available:
-  table 'quadtree_tables'    ... list of all tables which are partitioned
-  function 'quadtree_init_table(table_name, options)'
+  table 'parition_geometry_tables'
+                             ... list of all tables which are partitioned
+  function 'partition_geometry_init_table(table_name, options)'
                              ... initialize partitioning for a table
-  function 'quadtree_vacuum(table_name)'
+  function 'parititon_geometry_vacuum(table_name)'
                              ... removes tables which are no longer needed
-  function 'quadtree_add_index(table_name, def)'
+  function 'partition_geometry_add_index(table_name, def)'
 			     ... create an index on all tables. supply
 				 defintion as it would fit for the original
 				 table
