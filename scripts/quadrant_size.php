@@ -14,8 +14,17 @@ for($x=0; $x<$x_steps; $x++) {
 
     $res=sql_query("select count(*) as c from osm_line_extract where osm_way && ST_MakeEnvelope($x1, $y1, $x2, $y2, 900913)");
     $elem=pg_fetch_assoc($res);
+    $count_inside=$elem['c'];
 
-    print "$x $y => {$elem['c']}\n";
-    sql_query("insert into quadrant_size values ($x, $y, {$elem['c']});");
+    $res=sql_query("select count(*) as c from osm_line_extract where osm_way && ST_SetSRID(ST_MakeLine(ST_MakePoint($x1, $y1), ST_MakePoint($x1, $y2)), 900913)");
+    $elem=pg_fetch_assoc($res);
+    $count_left=$elem['c'];
+
+    $res=sql_query("select count(*) as c from osm_line_extract where osm_way && ST_SetSRID(ST_MakeLine(ST_MakePoint($x1, $y1), ST_MakePoint($x2, $y1)), 900913)");
+    $elem=pg_fetch_assoc($res);
+    $count_top=$elem['c'];
+
+    print "$x $y => {$count_inside}, {$count_left}, {$count_top}\n";
+    sql_query("insert into quadrant_size values ($x, $y, {$count_inside}, {$count_left}, {$count_top});");
   }
 }

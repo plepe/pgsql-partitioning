@@ -16,12 +16,22 @@ $res=sql_query("select * from quadrant_size");
 while($elem=pg_fetch_assoc($res)) {
   $x1=$elem['x']*$step_size;
   $x2=($elem['x']+1)*$step_size-1;
-  $y1=$elem['y']*$step_size;
-  $y2=($elem['y']+1)*$step_size-1;
+  $y1=($y_steps-$elem['y']-1)*$step_size;
+  $y2=($y_steps-$elem['y'])*$step_size-1;
 
   $v=log($elem['count'])*10;
   $col=imagecolorallocate($image, $v, $v, $v);
   imagefilledrectangle($image, $x1, $y1, $x2, $y2, $col);
+  imagecolordeallocate($image, $col);
+
+  $v=log($elem['count_left'])*20;
+  $col=imagecolorallocate($image, $v, $v, $v);
+  imageline($image, $x1, $y1, $x1, $y2, $col);
+  imagecolordeallocate($image, $col);
+
+  $v=log($elem['count_top'])*20;
+  $col=imagecolorallocate($image, $v, $v, $v);
+  imageline($image, $x1, $y1, $x2, $y1, $col);
   imagecolordeallocate($image, $col);
 }
 
