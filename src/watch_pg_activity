@@ -1,2 +1,0 @@
-#!/bin/bash
-tail -fn 10000 /var/log/daemon.log /var/log/postgresql/postgresql-8.4-main.log | egrep 'deleted|called|inserted|statistics|[NWRU]\s|finished|DONE'

@@ -1,9 +1,0 @@
-<?
-$test_active=true;
-
-//$test_depend=array();
-
-$test_tags=new tags(array(
-  "name"=>"Test",
-  "Author"=>"Stephan Plepelits"),
-);
