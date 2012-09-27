@@ -24,3 +24,6 @@ $y_axis=array(-20037508.34, 20037508.34);
 // when rendering, how large should the boxes be?
 $render_size=5;
 $render_name="{$table}.png";
+
+// When splitting the world in parts, how many parts should we use?
+$part_count=64;

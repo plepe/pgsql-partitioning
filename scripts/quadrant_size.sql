@@ -7,3 +7,14 @@ create table quadrant_size (
   count_top	int 	not null,
   primary key(x, y)
 );
+
+drop table if exists quadrant_part;
+create table quadrant_part (
+  id		serial	not null,
+  x_min		int	not null,
+  y_min		int	not null,
+  x_max		int	not null,
+  y_max		int	not null,
+  count		int	not null,
+  primary key(id)
+);
