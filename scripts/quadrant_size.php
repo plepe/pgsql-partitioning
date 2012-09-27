@@ -1,5 +1,5 @@
 <?
-include "conf.php";
+require "conf.php";
 require "simple.php";
 
 $x_step_size=($x_axis[1]-$x_axis[0])/$x_steps;
@@ -12,15 +12,15 @@ for($x=0; $x<$x_steps; $x++) {
     $y1=$y_axis[0]+$y*$y_step_size;
     $y2=$y_axis[0]+($y+1)*$y_step_size;
 
-    $res=sql_query("select count(*) as c from osm_line_extract where osm_way && ST_MakeEnvelope($x1, $y1, $x2, $y2, 900913)");
+    $res=sql_query("select count(*) as c from {$table} where {$table_geom} && ST_MakeEnvelope($x1, $y1, $x2, $y2, $SRID)");
     $elem=pg_fetch_assoc($res);
     $count_inside=$elem['c'];
 
-    $res=sql_query("select count(*) as c from osm_line_extract where osm_way && ST_SetSRID(ST_MakeLine(ST_MakePoint($x1, $y1), ST_MakePoint($x1, $y2)), 900913)");
+    $res=sql_query("select count(*) as c from {$table} where {$table_geom} && ST_SetSRID(ST_MakeLine(ST_MakePoint($x1, $y1), ST_MakePoint($x1, $y2)), $SRID)");
     $elem=pg_fetch_assoc($res);
     $count_left=$elem['c'];
 
-    $res=sql_query("select count(*) as c from osm_line_extract where osm_way && ST_SetSRID(ST_MakeLine(ST_MakePoint($x1, $y1), ST_MakePoint($x2, $y1)), 900913)");
+    $res=sql_query("select count(*) as c from {$table} where {$table_geom} && ST_SetSRID(ST_MakeLine(ST_MakePoint($x1, $y1), ST_MakePoint($x2, $y1)), $SRID)");
     $elem=pg_fetch_assoc($res);
     $count_top=$elem['c'];
 

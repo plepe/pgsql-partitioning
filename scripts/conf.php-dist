@@ -1,0 +1,26 @@
+<?
+// Local read only database
+$db=array();
+$db['name']="DB";
+$db['user']="USER";
+$db['passwd']="PASS";
+$db['host']="localhost";
+$db['debug']=false;
+$db_central=&$db;
+
+// Which database table should be analyzed. Name of the geometry table column.
+$table="osm_line";
+$table_geom="osm_way";
+
+// In how many pieces should the world be splitted for analyzing
+$x_steps=256;
+$y_steps=256;
+
+// Define SRID and world boundaries
+$SRID=900913;
+$x_axis=array(-20037508.34, 20037508.34);
+$y_axis=array(-20037508.34, 20037508.34);
+
+// when rendering, how large should the boxes be?
+$render_size=5;
+$render_name="{$table}.png";
