@@ -1,0 +1,69 @@
+== INTRODUCTION ==
+Using very large database tables in PostgreSQL is no big deal, but at a certain point performance on index queries starts to diminish. PostgreSQL offers a very promising feature, "[[http://www.postgresql.org/docs/9.1/static/ddl-partitioning.html|Partitioning]]", which tries to solve this problem by splitting tables into sub-tables, so that queries only need to load one or a few of those.
+
+There are two forms of partitioning:
+* "Range Partitioning", where the table is partitioned into "ranges" defined by a key column or a set of columns, with no overlap between the ranges (e.g. data ranges, identifiers, ...)
+* "List Partitioning" by explicitly listing which key values appear in each partition.
+
+In fact the Partitioning system is rather limited, as it works only for a few specific cases:
+* The list of sub-tables to be queried needs to be solved by the query planner, which means that this won't work for joins, where the key column depends on the result of the first table.
+* There may be no overlap between the sub-tables, which in many cases is not possible. Take the OpenStreetMap database as an example: There may be no boundary on the world which is not crossed by at least a ferry line or a deep water cable. And because of the freedom of keys you can't even say that a motorway may not also be entered as power line or a forest.
+* The range check works only for very simple data types, like integeres and texts, and only for <, = and > checks.
+
+The modules in this repository solve the problem by using sub-tables without any (automatic) checks and using simple [[http://www.postgresql.org/docs/9.1/static/ddl-inherit.html|inheritance]] instead (which is the basis of partitioning). To overcome the limitiations described in the previous paragraph a stored procedure for querying is used, which selects the to-be-queried sub-tables by itself.
+
+== EXAMPLE ==
+A simple example:
+  -- create a test-table for demonstration
+  create table marker (
+    title	text		not null
+  );
+  select AddGeometryColumn('marker', 'way', 900913, 'GEOMETRY', 2);
+
+  -- convert table into a partitioned table (magic happens)
+  select partition_geometry_init_table('marker');
+
+  -- insert something into the table:
+  insert into marker values ('My Home', ST_Point(5, 5));
+  -- a message "INSERT 0 0" will be written to stdout ... this is a known 
+  -- problem with partitioning. try it, you'll see, the content is there
+
+  -- Query all entries in a region
+  select * from marker(ST_MakeEnvelope(-10, -10, 10, 10, 900913));
+
+  -- Add an additional where parameter
+  select * from marker(ST_MakeEnvelope(-10, -10, 10, 10, 900913), $$title='My Home'$$);
+
+  -- You could also use:
+  select * from marker where way && ST_MakeEnvelope(-10, -10, 10, 10, 900913) and title='My Home';
+  -- but this query will always include all sub-tables. Also you should add
+  -- "distinct" as overlapping objects will be added to all matching
+  -- sub-tables. The query-function will always remove duplicates.
+
+== MODULES IN THIS REPOSITORY ==
+All modules define a function for setting up an already created table for partitioning and will create the query function.
+
+Query function:
+function 'xyz(key column, where, options)'
+* The first parameter will always be the key column which is used for partitioning.
+* The where parameter is an optional arbitriary string which will be added to the internal queries as where clause. You should use $$ as string delimiter, as you would need to double quote strings (see the example above).
+* Options is an optional hstore, you may set additional parameters like limit and offset, depending on the specific module you use.
+
+=== Partition Geometry ===
+This module works for geometries as defined by [[http://postgis.refractions.net/|PostGIS]]. In cases where entries overlap sub-tables, entries will be duplicated and stored in all sub-tables. Note that the query-function will only do a bounding box (&&) check (and may return entries outside the given geometry).
+
+=== Partition Integer ===
+A range check might have its draw backs, e.g. if sub-tables with low ids will over time get smaller (because entries are being deleted but never re-created in that range). PostgreSQL will not free up this harddisk space if you don't do a manual VACUUM FULL (which will lock the table exclusively - something you want to avoid on a live database).
+
+This module will use a part of the integer key, e.g. the 9th to 16th bit for partitioning. You could also use the 8 (or so) least significant bits, but in many cases you would want to query a list of ascending values and you would need to query a sub-table per value - not very reasonable.
+
+=== Partition Where ===
+The partitioning is done by a (or several) where clauses, e.g. all motorways in sub-table A, all railways in sub-table B, all other objects in sub-table C. Entries which match several where clauses will be entered to all matching sub-tables. C will contain all entries not matching any of those where clauses.
+
+You have to assign an id for each where clause, and need to supply this id (or list of ids) as first query function parameter.
+
+== READ MORE ==
+* [[http://www.postgresql.org/|PostgreSQL]]
+** [[http://www.postgresql.org/docs/9.1/static/ddl-partitioning.html|PostgreSQL Partitioning]]
+** [[http://www.postgresql.org/docs/9.1/static/ddl-inherit.html|PostgreSQL Inheritance]]
+* [[http://postgis.refractions.net/|PostGIS]]
