@@ -27,3 +27,6 @@ $render_name="{$table}.png";
 
 // When splitting the world in parts, how many parts should we use?
 $part_count=64;
+
+// How much may we vary from the center of the parent area when splitting?
+$part_tolerance=0.10;

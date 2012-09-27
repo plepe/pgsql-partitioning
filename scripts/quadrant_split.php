@@ -16,6 +16,19 @@ for($p=1; $p<$part_count; $p++) {
 
   if($elem['x_min']!=$elem['x_max']) {
     $s=floor($elem['x_min']+($elem['x_max']-$elem['x_min'])/2);
+    $s_tol=($elem['x_max']-$elem['x_min'])*$part_tolerance;
+    $s_min=floor($s-$s_tol);
+    $s_max=floor($s+$s_tol);
+
+    if($s_min<$elem['x_min'])
+      $s_min=$elem['x_min'];
+    if($s_max>$elem['x_max'])
+      $s_max=$elem['x_max'];
+
+    $res=sql_query("select x, sum(count_left) as sum, abs($s-x) as abst from quadrant_size where x>={$s_min} and x<={$s_max} and y>={$elem['y_min']} and y<={$elem['y_max']} group by x order by sum asc, abs($s-x) asc");
+    $e=pg_fetch_assoc($res);
+    $s=$e['x'];
+
     $poss[]=array(
       array(
         'x_min'=>$elem['x_min'],
@@ -33,6 +46,20 @@ for($p=1; $p<$part_count; $p++) {
   }
 
   if($elem['y_min']!=$elem['y_max']) {
+    $s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/2);
+    $s_tol=($elem['y_max']-$elem['y_min'])*$part_tolerance;
+    $s_min=floor($s-$s_tol);
+    $s_max=floor($s+$s_tol);
+
+    if($s_min<$elem['y_min'])
+      $s_min=$elem['y_min'];
+    if($s_max>$elem['y_max'])
+      $s_max=$elem['y_max'];
+
+    $res=sql_query("select y, sum(count_top) as sum, abs($s-y) as abst from quadrant_size where y>={$s_min} and y<={$s_max} and x>={$elem['x_min']} and x<={$elem['x_max']} group by y order by sum asc, abs($s-y) asc");
+    $e=pg_fetch_assoc($res);
+    $s=$e['y'];
+
     $s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/2);
     $poss[]=array(
       array(
