@@ -14,31 +14,33 @@ The modules in this repository solve the problem by using sub-tables without any
 
 == EXAMPLE ==
 A simple example:
-  -- create a test-table for demonstration
-  create table marker (
-    title	text		not null
-  );
-  select AddGeometryColumn('marker', 'way', 900913, 'GEOMETRY', 2);
+{{{
+-- create a test-table for demonstration
+create table marker (
+  title	text		not null
+);
+select AddGeometryColumn('marker', 'way', 900913, 'GEOMETRY', 2);
 
-  -- convert table into a partitioned table (magic happens)
-  select partition_geometry_init_table('marker');
+-- convert table into a partitioned table (magic happens)
+select partition_geometry_init_table('marker');
 
-  -- insert something into the table:
-  insert into marker values ('My Home', ST_Point(5, 5));
-  -- a message "INSERT 0 0" will be written to stdout ... this is a known 
-  -- problem with partitioning. try it, you'll see, the content is there
+-- insert something into the table:
+insert into marker values ('My Home', ST_Point(5, 5));
+-- a message "INSERT 0 0" will be written to stdout ... this is a known 
+-- problem with partitioning. try it, you'll see, the content is there
 
-  -- Query all entries in a region
-  select * from marker(ST_MakeEnvelope(-10, -10, 10, 10, 900913));
+-- Query all entries in a region
+select * from marker(ST_MakeEnvelope(-10, -10, 10, 10, 900913));
 
-  -- Add an additional where parameter
-  select * from marker(ST_MakeEnvelope(-10, -10, 10, 10, 900913), $$title='My Home'$$);
+-- Add an additional where parameter
+select * from marker(ST_MakeEnvelope(-10, -10, 10, 10, 900913), $$title='My Home'$$);
 
-  -- You could also use:
-  select * from marker where way && ST_MakeEnvelope(-10, -10, 10, 10, 900913) and title='My Home';
-  -- but this query will always include all sub-tables. Also you should add
-  -- "distinct" as overlapping objects will be added to all matching
-  -- sub-tables. The query-function will always remove duplicates.
+-- You could also use:
+select * from marker where way && ST_MakeEnvelope(-10, -10, 10, 10, 900913) and title='My Home';
+-- but this query will always include all sub-tables. Also you should add
+-- "distinct" as overlapping objects will be added to all matching
+-- sub-tables. The query-function will always remove duplicates.
+}}}
 
 == MODULES IN THIS REPOSITORY ==
 All modules define a function for setting up an already created table for partitioning and will create the query function.
