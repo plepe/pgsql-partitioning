@@ -8,6 +8,38 @@ $res=sql_query("select * from quadrant_part");
 $elem=pg_fetch_assoc($res);
 $min_count=$elem['count']/$part_count/4;
 
+function quadrant_split($elem, $axis, $split_pos) {
+  if($split_pos[0]<$elem["{$axis}_min"])
+    $split_pos[0]=$elem["{$axis}_min"];
+  if($split_pos[2]>$elem["{$axis}_max"])
+    $split_pos[2]=$elem["{$axis}_max"];
+
+  $not_axis=($axis=="x"?"y":"x");
+  $left_top=($axis=="x"?"left":"top");
+
+  $res=sql_query("select {$axis}, sum(count_{$left_top}) as sum, abs($split_pos[1]-{$axis}) as abst from quadrant_size where {$axis}>={$split_pos[0]} and {$axis}<={$split_pos[2]} and {$not_axis}>={$elem["{$not_axis}_min"]} and {$not_axis}<={$elem["{$not_axis}_max"]} group by {$axis} order by sum asc, abs({$split_pos[1]}-{$axis}) asc");
+  if(!($e=pg_fetch_assoc($res)))
+    return null;
+  $s=$e[$axis];
+
+  $ret=array(
+    array(
+      'x_min'=>$elem['x_min'],
+      'y_min'=>$elem['y_min'],
+      "{$axis}_max"=>$s,
+      "{$not_axis}_max"=>$elem["{$not_axis}_max"],
+    ),
+    array(
+      "{$axis}_min"=>$s+1,
+      "{$not_axis}_min"=>$elem["{$not_axis}_min"],
+      'x_max'=>$elem['x_max'],
+      'y_max'=>$elem['y_max'],
+    ),
+  );
+
+  return $ret;
+}
+
 for($p=1; $p<$part_count; $p++) {
   $res=sql_query("select * from quadrant_part where (x_max != x_min or y_max != y_min) and no_split=false order by count desc limit 1");
   if(!($elem=pg_fetch_assoc($res))) {
@@ -19,66 +51,29 @@ for($p=1; $p<$part_count; $p++) {
   $poss=array();
 
   if($elem['x_min']!=$elem['x_max']) {
-    $s=floor($elem['x_min']+($elem['x_max']-$elem['x_min'])/2);
-    $s_tol=($elem['x_max']-$elem['x_min'])*$part_tolerance;
-    $s_min=floor($s-$s_tol);
-    $s_max=floor($s+$s_tol);
+    for($i=2; $i<7; $i++) {
+      $s=floor($elem['x_min']+($elem['x_max']-$elem['x_min'])/8*$i);
+      $s_tol=($elem['x_max']-$elem['x_min'])*$part_tolerance;
+      $s_min=floor($s-$s_tol);
+      $s_max=floor($s+$s_tol);
 
-    if($s_min<$elem['x_min'])
-      $s_min=$elem['x_min'];
-    if($s_max>$elem['x_max'])
-      $s_max=$elem['x_max'];
-
-    $res=sql_query("select x, sum(count_left) as sum, abs($s-x) as abst from quadrant_size where x>={$s_min} and x<={$s_max} and y>={$elem['y_min']} and y<={$elem['y_max']} group by x order by sum asc, abs($s-x) asc");
-    $e=pg_fetch_assoc($res);
-    $s=$e['x'];
-
-    $poss[]=array(
-      array(
-        'x_min'=>$elem['x_min'],
-	'y_min'=>$elem['y_min'], 
-        'x_max'=>$s,
-	'y_max'=>$elem['y_max'], 
-      ),
-      array(
-        'x_min'=>$s+1,
-	'y_min'=>$elem['y_min'], 
-        'x_max'=>$elem['x_max'],
-	'y_max'=>$elem['y_max'], 
-      ),
-    );
+      $parts=quadrant_split($elem, 'x', array($s_min, $s, $s_max));
+      if($parts)
+	$poss[]=$parts;
+    }
   }
 
   if($elem['y_min']!=$elem['y_max']) {
-    $s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/2);
-    $s_tol=($elem['y_max']-$elem['y_min'])*$part_tolerance;
-    $s_min=floor($s-$s_tol);
-    $s_max=floor($s+$s_tol);
+    for($i=2; $i<7; $i++) {
+      $s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/8*$i);
+      $s_tol=($elem['y_max']-$elem['y_min'])*$part_tolerance;
+      $s_min=floor($s-$s_tol);
+      $s_max=floor($s+$s_tol);
 
-    if($s_min<$elem['y_min'])
-      $s_min=$elem['y_min'];
-    if($s_max>$elem['y_max'])
-      $s_max=$elem['y_max'];
-
-    $res=sql_query("select y, sum(count_top) as sum, abs($s-y) as abst from quadrant_size where y>={$s_min} and y<={$s_max} and x>={$elem['x_min']} and x<={$elem['x_max']} group by y order by sum asc, abs($s-y) asc");
-    $e=pg_fetch_assoc($res);
-    $s=$e['y'];
-
-    $s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/2);
-    $poss[]=array(
-      array(
-        'x_min'=>$elem['x_min'],
-	'y_min'=>$elem['y_min'], 
-	'x_max'=>$elem['x_max'], 
-        'y_max'=>$s,
-      ),
-      array(
-	'x_min'=>$elem['x_min'], 
-        'y_min'=>$s+1,
-        'x_max'=>$elem['x_max'],
-	'y_max'=>$elem['y_max'], 
-      )
-    );
+      $parts=quadrant_split($elem, 'y', array($s_min, $s, $s_max));
+      if($parts)
+	$poss[]=$parts;
+    }
   }
 
   $poss_diff=array();
@@ -89,13 +84,13 @@ for($p=1; $p<$part_count; $p++) {
       $poss[$i][$j]['count']=$e['sum'];
     }
 
-    $rel=$poss[$i][0]['count']/$poss[$i][1]['count'];
     if(($poss[$i][0]['count']<$min_count)||
        ($poss[$i][1]['count']<$min_count)) {
       // too few elements in one of the parts
       unset($poss[$i]);
     }
     else {
+      $rel=$poss[$i][0]['count']/$poss[$i][1]['count'];
       $poss_diff[$i]=abs(1-($rel<1.0?$rel:1/$rel));
     }
   }
