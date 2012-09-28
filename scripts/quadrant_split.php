@@ -8,6 +8,8 @@ $res=sql_query("select * from quadrant_part");
 $elem=pg_fetch_assoc($res);
 $optimal_count=$elem['count']/$part_count;
 
+print "Optimal count per quadrant: {$optimal_count}\n";
+
 function quadrant_split($elem, $axis, $split_pos) {
   if($split_pos[0]<$elem["{$axis}_min"])
     $split_pos[0]=$elem["{$axis}_min"];
@@ -24,12 +26,14 @@ function quadrant_split($elem, $axis, $split_pos) {
 
   $ret=array(
     array(
+      'id'=>$elem['id'],
       'x_min'=>$elem['x_min'],
       'y_min'=>$elem['y_min'],
       "{$axis}_max"=>$s,
       "{$not_axis}_max"=>$elem["{$not_axis}_max"],
     ),
     array(
+      'id'=>$elem['id'],
       "{$axis}_min"=>$s+1,
       "{$not_axis}_min"=>$elem["{$not_axis}_min"],
       'x_max'=>$elem['x_max'],
@@ -65,44 +69,48 @@ function quadrant_assess($part) {
   elseif($c>0.5)	$ret[]=2;
   elseif($c>0.3)	$ret[]=3;
   elseif($c>0.15)	$ret[]=4;
-  else			$ret[]=5;
+  else			$ret[]=6;
 
   return $ret;
 }
 
 for($p=1; $p<$part_count; $p++) {
-  $res=sql_query("select * from quadrant_part where (x_max != x_min or y_max != y_min) and no_split=false order by count desc limit 1");
-  if(!($elem=pg_fetch_assoc($res))) {
+  $res=sql_query("select * from quadrant_part where (x_max != x_min or y_max != y_min) and no_split=false and count>(select max(count) from quadrant_part)*0.9 order by count desc");
+  if(($c=pg_num_rows($res))==0) {
     print "No parts left to split!\n";
     break;
   }
+  print "Taking $c quadrants into account:\n";
 
-  // Try vertical
   $poss=array();
 
-  if($elem['x_min']!=$elem['x_max']) {
-    for($i=2; $i<7; $i++) {
-      $s=floor($elem['x_min']+($elem['x_max']-$elem['x_min'])/8*$i);
-      $s_tol=($elem['x_max']-$elem['x_min'])*$part_tolerance;
-      $s_min=floor($s-$s_tol);
-      $s_max=floor($s+$s_tol);
+  while($elem=pg_fetch_assoc($res)) {
+    // Try vertical
 
-      $parts=quadrant_split($elem, 'x', array($s_min, $s, $s_max));
-      if($parts)
-	$poss[]=$parts;
+    if($elem['x_min']!=$elem['x_max']) {
+      for($i=2; $i<7; $i++) {
+	$s=floor($elem['x_min']+($elem['x_max']-$elem['x_min'])/8*$i);
+	$s_tol=($elem['x_max']-$elem['x_min'])*$part_tolerance;
+	$s_min=floor($s-$s_tol);
+	$s_max=floor($s+$s_tol);
+
+	$parts=quadrant_split($elem, 'x', array($s_min, $s, $s_max));
+	if($parts)
+	  $poss[]=$parts;
+      }
     }
-  }
 
-  if($elem['y_min']!=$elem['y_max']) {
-    for($i=2; $i<7; $i++) {
-      $s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/8*$i);
-      $s_tol=($elem['y_max']-$elem['y_min'])*$part_tolerance;
-      $s_min=floor($s-$s_tol);
-      $s_max=floor($s+$s_tol);
+    if($elem['y_min']!=$elem['y_max']) {
+      for($i=2; $i<7; $i++) {
+	$s=floor($elem['y_min']+($elem['y_max']-$elem['y_min'])/8*$i);
+	$s_tol=($elem['y_max']-$elem['y_min'])*$part_tolerance;
+	$s_min=floor($s-$s_tol);
+	$s_max=floor($s+$s_tol);
 
-      $parts=quadrant_split($elem, 'y', array($s_min, $s, $s_max));
-      if($parts)
-	$poss[]=$parts;
+	$parts=quadrant_split($elem, 'y', array($s_min, $s, $s_max));
+	if($parts)
+	  $poss[]=$parts;
+      }
     }
   }
 
@@ -128,6 +136,8 @@ for($p=1; $p<$part_count; $p++) {
 	sizeof($poss[$i][$j]['assess']);
     }
 
+//    if(($poss[$i][0]['assess_avg']>4)||($poss[$i][1]['assess_avg']>4))
+//      ;
     if($poss[$i][0]['count']<$poss[$i][1]['count'])
       $poss_assess[$i]=$poss[$i][0]['assess_avg'];
     else
@@ -135,22 +145,33 @@ for($p=1; $p<$part_count; $p++) {
   }
 
   if(sizeof($poss)==0) {
-    print "Can't split part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']}\n";
-    sql_query("update quadrant_part set no_split=true where id='{$elem['id']}'");
-    $p--;
-    continue;
+//    print "Can't split part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']}\n";
+//    sql_query("update quadrant_part set no_split=true where id='{$elem['id']}'");
+    //$p--;
+    print "Did not find anything!\n";
+    break;
   }
 
   asort($poss_assess);
   $poss_key=array_keys($poss_assess);
+
+  $poss_count=array();
+  $poss_assess_min=$poss_assess[$poss_key[0]];
+  foreach($poss_assess as $i=>$assess) {
+    if($assess==$poss_assess_min)
+      $poss_count[$i]=$poss[$i][0]['count']+$poss[$i][1]['count'];
+  }
+
+  arsort($poss_count);
+  $poss_key=array_keys($poss_count);
   $win=$poss[$poss_key[0]];
 
-  print "Splitting part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']} to ";
+  print "Splitting part {$win[0]['id']}: "; //{$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']} to ";
 
-  sql_query("delete from quadrant_part where id='{$elem['id']}'");
+  sql_query("delete from quadrant_part where id='{$win[0]['id']}'");
   foreach($win as $part) {
     sql_query("insert into quadrant_part (x_min, y_min, x_max, y_max, count, assess) values ({$part['x_min']}, {$part['y_min']}, {$part['x_max']}, {$part['y_max']}, {$part['count']}, {$part['assess_avg']})");
-    print "{$part['x_min']}x{$part['y_min']}-{$part['x_max']}x{$part['y_max']} ";
+    print "{$part['x_min']}x{$part['y_min']}-{$part['x_max']}x{$part['y_max']} (".sprintf("%dk %.2f", $part['count']/1000, $part['assess_avg']).") ";
   }
   print "\n";
 }
