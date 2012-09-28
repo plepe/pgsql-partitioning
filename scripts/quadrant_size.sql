@@ -17,5 +17,6 @@ create table quadrant_part (
   y_max		int	not null,
   count		int	not null,
   no_split	boolean not null default false,
+  assess	float	not null default 0,
   primary key(id)
 );

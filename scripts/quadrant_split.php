@@ -6,7 +6,7 @@ sql_query("delete from quadrant_part");
 sql_query("insert into quadrant_part (select 0, 0, 0, ".($x_steps-1).", ".($y_steps-1).", sum(count) from quadrant_size)");
 $res=sql_query("select * from quadrant_part");
 $elem=pg_fetch_assoc($res);
-$min_count=$elem['count']/$part_count/4;
+$optimal_count=$elem['count']/$part_count;
 
 function quadrant_split($elem, $axis, $split_pos) {
   if($split_pos[0]<$elem["{$axis}_min"])
@@ -36,6 +36,36 @@ function quadrant_split($elem, $axis, $split_pos) {
       'y_max'=>$elem['y_max'],
     ),
   );
+
+  return $ret;
+}
+
+function quadrant_assess($part) {
+  global $optimal_count;
+  $ret=array();
+
+  // assess count - best if it ~ equals optimal count (0.8 .. 1.1)
+  // if it's more, it's okay, we can split later
+  // if it's less, give a bad grade
+  $c=(float)$part['count']/(float)$optimal_count;
+  if($c>1.1)		$ret[]=1;
+  elseif($c>0.8)	$ret[]=0;
+  elseif($c>0.6)	$ret[]=2;
+  elseif($c>0.4)	$ret[]=3;
+  elseif($c>0.3)	$ret[]=4;
+  else			$ret[]=5;
+
+  // assess ratio of geometry
+  $c=
+    (float)($part['x_max']-$part['x_min']+1)/
+    (float)($part['y_max']-$part['y_min']+1);
+  if($c>1.0) $c=1.0/$c;
+  if($c>0.9)		$ret[]=0; // nearly square? best grade!
+  elseif($c>0.7)	$ret[]=1;
+  elseif($c>0.5)	$ret[]=2;
+  elseif($c>0.3)	$ret[]=3;
+  elseif($c>0.15)	$ret[]=4;
+  else			$ret[]=5;
 
   return $ret;
 }
@@ -76,23 +106,32 @@ for($p=1; $p<$part_count; $p++) {
     }
   }
 
-  $poss_diff=array();
+  $poss_assess=array();
   foreach($poss as $i=>$poss_part) {
     foreach($poss_part as $j=>$part) {
       $res=sql_query("select sum(count) as sum from quadrant_size where x>={$part['x_min']} and x<={$part['x_max']} and y>={$part['y_min']} and y<={$part['y_max']}");
       $e=pg_fetch_assoc($res);
       $poss[$i][$j]['count']=$e['sum'];
+
+      $poss[$i][$j]['assess']=quadrant_assess($poss[$i][$j]);
+      $poss[$i][$j]['assess_avg']=
+	array_sum($poss[$i][$j]['assess'])/
+	sizeof($poss[$i][$j]['assess']);
     }
 
-    if(($poss[$i][0]['count']<$min_count)||
-       ($poss[$i][1]['count']<$min_count)) {
-      // too few elements in one of the parts
-      unset($poss[$i]);
+    $poss[$i][0]['assess'][]=round($poss[$i][1]['assess_avg']);
+    $poss[$i][1]['assess'][]=round($poss[$i][0]['assess_avg']);
+
+    foreach($poss_part as $j=>$part) {
+      $poss[$i][$j]['assess_avg']=
+	(float)array_sum($poss[$i][$j]['assess'])/
+	sizeof($poss[$i][$j]['assess']);
     }
-    else {
-      $rel=$poss[$i][0]['count']/$poss[$i][1]['count'];
-      $poss_diff[$i]=abs(1-($rel<1.0?$rel:1/$rel));
-    }
+
+    if($poss[$i][0]['count']<$poss[$i][1]['count'])
+      $poss_assess[$i]=$poss[$i][0]['assess_avg'];
+    else
+      $poss_assess[$i]=$poss[$i][1]['assess_avg'];
   }
 
   if(sizeof($poss)==0) {
@@ -102,15 +141,15 @@ for($p=1; $p<$part_count; $p++) {
     continue;
   }
 
-  asort($poss_diff);
-  $poss_key=array_keys($poss_diff);
+  asort($poss_assess);
+  $poss_key=array_keys($poss_assess);
   $win=$poss[$poss_key[0]];
 
   print "Splitting part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']} to ";
 
   sql_query("delete from quadrant_part where id='{$elem['id']}'");
   foreach($win as $part) {
-    sql_query("insert into quadrant_part (x_min, y_min, x_max, y_max, count) values ({$part['x_min']}, {$part['y_min']}, {$part['x_max']}, {$part['y_max']}, {$part['count']})");
+    sql_query("insert into quadrant_part (x_min, y_min, x_max, y_max, count, assess) values ({$part['x_min']}, {$part['y_min']}, {$part['x_max']}, {$part['y_max']}, {$part['count']}, {$part['assess_avg']})");
     print "{$part['x_min']}x{$part['y_min']}-{$part['x_max']}x{$part['y_max']} ";
   }
   print "\n";
