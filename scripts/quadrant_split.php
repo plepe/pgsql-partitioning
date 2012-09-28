@@ -4,12 +4,16 @@ require "simple.php";
 
 sql_query("delete from quadrant_part");
 sql_query("insert into quadrant_part (select 0, 0, 0, ".($x_steps-1).", ".($y_steps-1).", sum(count) from quadrant_size)");
+$res=sql_query("select * from quadrant_part");
+$elem=pg_fetch_assoc($res);
+$min_count=$elem['count']/$part_count/4;
 
 for($p=1; $p<$part_count; $p++) {
-  $res=sql_query("select * from quadrant_part where (x_max != x_min or y_max != y_min) order by count desc limit 1");
-  $elem=pg_fetch_assoc($res);
-
-  print "Splitting part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']}\n";
+  $res=sql_query("select * from quadrant_part where (x_max != x_min or y_max != y_min) and no_split=false order by count desc limit 1");
+  if(!($elem=pg_fetch_assoc($res))) {
+    print "No parts left to split!\n";
+    break;
+  }
 
   // Try vertical
   $poss=array();
@@ -77,6 +81,7 @@ for($p=1; $p<$part_count; $p++) {
     );
   }
 
+  $poss_diff=array();
   foreach($poss as $i=>$poss_part) {
     foreach($poss_part as $j=>$part) {
       $res=sql_query("select sum(count) as sum from quadrant_size where x>={$part['x_min']} and x<={$part['x_max']} and y>={$part['y_min']} and y<={$part['y_max']}");
@@ -84,15 +89,34 @@ for($p=1; $p<$part_count; $p++) {
       $poss[$i][$j]['count']=$e['sum'];
     }
 
-    $poss_diff[$i]=abs($poss[$i][0]['count']-$poss[$i][1]['count']);
+    $rel=$poss[$i][0]['count']/$poss[$i][1]['count'];
+    if(($poss[$i][0]['count']<$min_count)||
+       ($poss[$i][1]['count']<$min_count)) {
+      // too few elements in one of the parts
+      unset($poss[$i]);
+    }
+    else {
+      $poss_diff[$i]=abs(1-($rel<1.0?$rel:1/$rel));
+    }
+  }
+
+  if(sizeof($poss)==0) {
+    print "Can't split part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']}\n";
+    sql_query("update quadrant_part set no_split=true where id='{$elem['id']}'");
+    $p--;
+    continue;
   }
 
   asort($poss_diff);
   $poss_key=array_keys($poss_diff);
   $win=$poss[$poss_key[0]];
 
+  print "Splitting part {$elem['id']}: {$elem['x_min']}x{$elem['y_min']}-{$elem['x_max']}x{$elem['y_max']} to ";
+
   sql_query("delete from quadrant_part where id='{$elem['id']}'");
   foreach($win as $part) {
     sql_query("insert into quadrant_part (x_min, y_min, x_max, y_max, count) values ({$part['x_min']}, {$part['y_min']}, {$part['x_max']}, {$part['y_max']}, {$part['count']})");
+    print "{$part['x_min']}x{$part['y_min']}-{$part['x_max']}x{$part['y_max']} ";
   }
+  print "\n";
 }
