@@ -57,21 +57,28 @@ function quadrant_assess($part) {
   elseif($c>0.6)	$ret[]=2;
   elseif($c>0.4)	$ret[]=3;
   elseif($c>0.3)	$ret[]=4;
-  else			$ret[]=5;
+  elseif($c>0.05)	$ret[]=5;
+  else			$ret[]=9;
 
   // assess ratio of geometry
   $c=
     (float)($part['x_max']-$part['x_min']+1)/
-    (float)($part['y_max']-$part['y_min']+1);
+    (float)(real_y($part['y_max']+1)-real_y($part['y_min']));
   if($c>1.0) $c=1.0/$c;
   if($c>0.9)		$ret[]=0; // nearly square? best grade!
   elseif($c>0.7)	$ret[]=1;
   elseif($c>0.5)	$ret[]=2;
   elseif($c>0.3)	$ret[]=3;
   elseif($c>0.15)	$ret[]=4;
-  else			$ret[]=6;
+  else			$ret[]=5;
 
   return $ret;
+}
+
+function real_y($y) {
+  $y=floor(128-cos($y/256*M_PI)*128);
+
+  return $y;
 }
 
 for($p=1; $p<$part_count; $p++) {
