@@ -1,4 +1,8 @@
-The osm_line_2012apr_*.txt are based on an OpenStreetMap database table containing all non-closed ways dating back to April 1st, 2012. It was using version 22f5dcc of this repository. The used configuration includes the following options:
+The osm_line_2012apr_*.txt are based on an OpenStreetMap database table
+containing all non-closed ways dating back to April 1st, 2012. It was using
+version a2369fb of this repository. The used configuration includes the
+following options:
+
 {{{
 $x_steps=256;
 $y_steps=256;
