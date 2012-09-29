@@ -14,13 +14,13 @@ DECLARE
   index_def text[]=Array[]::text[];
 BEGIN
   -- set default values
-  options='type=>integer, id_count=>1000000, id_column=>id'||options;
+  options='id_div=>256, id_mask=>255, id_column=>id'||options;
 
   -- add table to the list of partition_tables
   insert into partition_tables values (table_name, Array[]::text[], Array[]::text[], options);
 
   -- create trigger for insert statement
-  execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ BEGIN perform partition_integer_on_insert('''||table_name||''', NEW); return null; END; $f$ language plpgsql;';
+  execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ BEGIN perform partition_integer_on_insert('''||table_name||''', NEW, '''||cast(options as text)||'''::hstore); return null; END; $f$ language plpgsql;';
   execute 'create trigger partition_integer_insert_trigger_'||table_name||' before insert on '||table_name||' for each row execute procedure partition_integer_insert_trigger_'||table_name||'();';
 
   -- save list of current indexes
@@ -64,29 +64,26 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- called from the insert-trigger ... does the actual insert
-CREATE OR REPLACE FUNCTION partition_integer_on_insert(in table_name text, in NEW anyelement) returns boolean as $$
+CREATE OR REPLACE FUNCTION partition_integer_on_insert(in table_name text, in NEW anyelement, in options hstore) returns boolean as $$
 #variable_conflict use_variable
 DECLARE
   part_id int8;
   table_def record;
-  opt hstore;
-  count int8;
+  id_div int8;
+  id_mask int8;
 BEGIN
-  select * into table_def from partition_tables where partition_tables.table_name=table_name;
-  opt:=table_def.options;
-  count:=cast(opt->'id_count' as int8);
+  id_div:=cast(options->'id_div' as int8);
+  id_mask:=cast(options->'id_mask' as int8);
 
-  execute 'select $1.'||(opt->'id_column') into part_id using NEW;
-  part_id=part_id/count;
+  execute 'select $1.'||(options->'id_column') into part_id using NEW;
+  part_id=(part_id/id_div)&id_mask;
 
   -- first insert the data into the temporary table
   begin
     execute 'insert into '||table_name||'_'||part_id||' select $1.*' using NEW;
   exception when undefined_table then
-    execute 'create table '||table_name||'_'||part_id||' ( '||
-      'check ( '||(opt->'id_column')||' >= '||(part_id*count)||
-      ' and '||(opt->'id_column')||' < '||((part_id+1)*count)||') '||
-      ') inherits ('||table_name||');';
+    execute 'create table '||table_name||'_'||part_id||' () '||
+      ' inherits ('||table_name||');';
 
     perform partition_table_indexes(table_name, cast(part_id as text));
 
@@ -109,4 +106,3 @@ BEGIN
   return true;
 END;
 $$ language plpgsql;
-
