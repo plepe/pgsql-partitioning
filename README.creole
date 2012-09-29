@@ -64,6 +64,9 @@ The partitioning is done by a (or several) where clauses, e.g. all motorways in 
 
 You have to assign an id for each where clause, and need to supply this id (or list of ids) as first query function parameter.
 
+=== Partition Geometry Advanced ===
+This module is based on an earlier version of Partition Geometry and features automatic splitting of boundaries. Actually, the Partition Geometry module is a simplyfied version of this module.
+
 == READ MORE ==
 * [[http://www.postgresql.org/|PostgreSQL]]
 ** [[http://www.postgresql.org/docs/9.1/static/ddl-partitioning.html|PostgreSQL Partitioning]]

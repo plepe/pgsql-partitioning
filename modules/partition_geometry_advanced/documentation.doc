@@ -1,0 +1,50 @@
+Plugin 'Partition Geometry' converts a spatial database table into a
+partitioned table
+
+Example:
+  -- create a test-table for demonstration
+  create table test (
+    id	text	not null,
+    tags	hstore	
+  );
+  select AddGeometryColumn('test', 'way', 900913, 'GEOMETRY', 2);
+
+  -- convert table into a partitioned table
+  select partition_geometry_init_table('test');
+  
+  -- TODO: currently the old content is not moved to the subtables yet
+
+  -- insert something into the table:
+  insert into test values ('foo', 'foo=>bar', ST_Point(5, 5));
+  -- a message "INSERT 0 0" will be written to stdout ... this is a known 
+  -- problem with partitioning. try it, you'll see, the content is there
+  
+  -- you can use the table as you were used too, but this would always include
+  -- a search on all tables and there could be duplicates (so you should use
+  -- disinct)
+  select distinct * from test where way && ST_MakeEnvelope(-10, -10, 10, 10, 900913) and tags @> 'foo=>bar';
+  select distinct * from test where id='foo';
+
+  -- place a query on the table with "speedup" - this only queries the
+  -- subtables which can hold the object(s):
+  select * from test_query(ST_MakeEnvelope(-10, -10, 10, 10, 900913), $$tags @> 'foo=>bar'$$);
+  -- use $$ instead of ', so you don't have to double quote inner '
+
+The following tables and function will be created:
+  table 'test'               ... the original table
+  table 'test_quadtree'      ... a list of all partitions of test
+  tables 'test_X'            ... where X are numbers -> the partitions
+  function 'test_query(boundary, where, options)'
+			     ... place a query on test
+
+The following general tables and functions are available:
+  table 'parition_geometry_tables'
+                             ... list of all tables which are partitioned
+  function 'partition_geometry_init_table(table_name, options)'
+                             ... initialize partitioning for a table
+  function 'parititon_geometry_vacuum(table_name)'
+                             ... removes tables which are no longer needed
+  function 'partition_geometry_add_index(table_name, def)'
+			     ... create an index on all tables. supply
+				 defintion as it would fit for the original
+				 table
