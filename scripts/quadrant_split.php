@@ -22,27 +22,38 @@ function quadrant_split($elem, $axis, $split_pos) {
   $not_axis=($axis=="x"?"y":"x");
   $left_top=($axis=="x"?"left":"top");
 
-  $res=sql_query("select {$axis}, sum(count_{$left_top}) as sum, abs($split_pos[1]-{$axis}) as abst from quadrant_size where {$axis}>={$split_pos[0]} and {$axis}<={$split_pos[2]} and {$not_axis}>={$elem["{$not_axis}_min"]} and {$not_axis}<={$elem["{$not_axis}_max"]} group by {$axis} order by sum asc, abs({$split_pos[1]}-{$axis}) asc");
-  if(!($e=pg_fetch_assoc($res)))
-    return null;
-  $s=$e[$axis];
+  $min_sum=null;
+  $ret=array();
 
-  $ret=array(
-    array(
-      'id'=>$elem['id'],
-      'x_min'=>$elem['x_min'],
-      'y_min'=>$elem['y_min'],
-      "{$axis}_max"=>$s,
-      "{$not_axis}_max"=>$elem["{$not_axis}_max"],
-    ),
-    array(
-      'id'=>$elem['id'],
-      "{$axis}_min"=>$s+1,
-      "{$not_axis}_min"=>$elem["{$not_axis}_min"],
-      'x_max'=>$elem['x_max'],
-      'y_max'=>$elem['y_max'],
-    ),
-  );
+  $res=sql_query("select {$axis}, sum(count_{$left_top}) as sum, abs($split_pos[1]-{$axis}) as abst from quadrant_size where {$axis}>={$split_pos[0]} and {$axis}<={$split_pos[2]} and {$not_axis}>={$elem["{$not_axis}_min"]} and {$not_axis}<={$elem["{$not_axis}_max"]} group by {$axis} order by sum asc, abs({$split_pos[1]}-{$axis}) asc limit 1");
+  if(pg_num_rows($res)==0)
+    return array();
+
+  while($e=pg_fetch_assoc($res)) {
+    $s=$e[$axis];
+
+    if($min_sum===null)
+      $min_sum=$e['sum'];
+    if($e['sum']>$min_sum*1.25)
+      return $ret;
+
+    $ret[]=array(
+      array(
+	'id'=>$elem['id'],
+	'x_min'=>$elem['x_min'],
+	'y_min'=>$elem['y_min'],
+	"{$axis}_max"=>$s,
+	"{$not_axis}_max"=>$elem["{$not_axis}_max"],
+      ),
+      array(
+	'id'=>$elem['id'],
+	"{$axis}_min"=>$s+1,
+	"{$not_axis}_min"=>$elem["{$not_axis}_min"],
+	'x_max'=>$elem['x_max'],
+	'y_max'=>$elem['y_max'],
+      ),
+    );
+  }
 
   return $ret;
 }
@@ -96,6 +107,7 @@ for($p=1; $p<$part_count; $p++) {
 
   while($elem=pg_fetch_assoc($res)) {
     // Try vertical
+    print "  split returns";
 
     if($elem['x_min']!=$elem['x_max']) {
       for($i=2; $i<7; $i++) {
@@ -105,8 +117,8 @@ for($p=1; $p<$part_count; $p++) {
 	$s_max=floor($s+$s_tol);
 
 	$parts=quadrant_split($elem, 'x', array($s_min, $s, $s_max));
-	if($parts)
-	  $poss[]=$parts;
+	$poss=array_merge($poss, $parts);
+	print " x: ".sizeof($parts);
       }
     }
 
@@ -118,10 +130,12 @@ for($p=1; $p<$part_count; $p++) {
 	$s_max=floor($s+$s_tol);
 
 	$parts=quadrant_split($elem, 'y', array($s_min, $s, $s_max));
-	if($parts)
-	  $poss[]=$parts;
+	$poss=array_merge($poss, $parts);
+	print " y: ".sizeof($parts);
       }
     }
+
+    print " parts\n";
   }
 
   $poss_assess=array();
