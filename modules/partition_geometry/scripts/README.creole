@@ -1,0 +1,21 @@
+These scripts create a boundary files based on an existing database.
+
+== USAGE ==
+Copy conf.php-dist to conf.php and adapt to your needs.
+
+{{{
+# Create tables where to store data
+psql -f quadrant_init.sql
+
+# Populate quadrant_size table from existing data
+./quadrant_size.php
+
+# Try to build regions from quadrants.
+./quadrant_split.php
+
+# Visualize result. You should repeat split and render after tweaking conf.php
+./quadrant_render.php
+
+# If you are satisfied, save to csv files
+./quadrant_save.php
+}}}
