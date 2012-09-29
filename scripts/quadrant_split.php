@@ -4,9 +4,12 @@ require "simple.php";
 
 sql_query("delete from quadrant_part");
 sql_query("insert into quadrant_part (select 0, 0, 0, ".($x_steps-1).", ".($y_steps-1).", sum(count) from quadrant_size)");
-$res=sql_query("select * from quadrant_part");
-$elem=pg_fetch_assoc($res);
-$optimal_count=$elem['count']/$part_count;
+
+if(!isset($optimal_count)) {
+  $res=sql_query("select * from quadrant_part");
+  $elem=pg_fetch_assoc($res);
+  $optimal_count=$elem['count']/$part_count;
+}
 
 print "Optimal count per quadrant: {$optimal_count}\n";
 
