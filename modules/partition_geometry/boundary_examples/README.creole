@@ -1,0 +1,10 @@
+The osm_line_2012apr_*.txt are based on an OpenStreetMap database table containing all non-closed ways dating back to April 1st, 2012. It was using version 22f5dcc of this repository. The used configuration includes the following options:
+{{{
+$x_steps=256;
+$y_steps=256;
+$part_count=128;
+$part_tolerance=0.10;
+$optimal_count=1000000;
+}}}
+
+The files contain a boundary for each quadrant and an object_count based on the bounding_boxes of the objects in said database in SRID 900913. The number in the file name indicate the count of quadrants in the files.
