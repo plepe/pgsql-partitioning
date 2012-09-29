@@ -48,30 +48,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- add part
-CREATE OR REPLACE FUNCTION partition_add_part(in table_name text, in part_id text, in part_where text) returns boolean as $$
-#variable_conflict use_variable
-DECLARE
-BEGIN
-  update partition_tables set
-    parts_id=array_append(parts_id, part_id),
-    parts_where=array_append(parts_where, part_where)
-  where partition_tables.table_name=table_name;
-
-  execute 'create table '||table_name||'_'||part_id||' () inherits ('||table_name||');';
-
-  -- fill subtable with fitting data
-  execute 'insert into '||table_name||'_'||part_id||' (select * from '||table_name||'_query(null::text[], $f$'||part_where||'$f$));';
-  -- delete fitting data from other-subtable
-  execute 'delete from '||table_name||'_other where '||part_where||';';
-
-  -- create indexes on table
-  perform partition_table_indexes(table_name, part_id);
-
-  return true;
-END;
-$$ LANGUAGE plpgsql;
-
 -- remove all traces of a table
 create or replace function partition_integer_drop_table(in table_name text) returns boolean as $$
 #variable_conflict use_variable
