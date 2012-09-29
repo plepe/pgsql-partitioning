@@ -13,6 +13,7 @@ DECLARE
   r record;
   index_def text[]=Array[]::text[];
   i int;
+  fun text;
 BEGIN
   -- set default values
   options='id_div=>256, id_mask=>255, id_column=>id'||options;
@@ -21,8 +22,12 @@ BEGIN
   insert into partition_tables values (table_name, Array[]::text[], Array[]::text[], options);
 
   -- create trigger for insert statement
-  -- execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ BEGIN perform partition_integer_on_insert('''||table_name||''', NEW); return null; END; $f$ language plpgsql;';
-  execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE part_id int8; BEGIN part_id=(NEW.'||(options->'id_column')||'/'||(options->'id_div')||')&'||(options->'id_mask')||'; execute ''insert into '||table_name||'_''||part_id||'' select $1.*'' using NEW; return null; END; $f$ language plpgsql;';
+  fun='create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE part_id int8; BEGIN part_id=(NEW.'||(options->'id_column')||'/'||(options->'id_div')||')&'||(options->'id_mask')||';';
+  fun=fun||build_if_tree(0, cast(options->'id_mask' as int), 'part_id', 'insert into '||table_name||'_% values (NEW.*)');
+  fun=fun||' return null; END; $f$ language plpgsql;';
+  execute fun;
+
+  -- set trigger on insert statement
   execute 'create trigger partition_integer_insert_trigger_'||table_name||' before insert on '||table_name||' for each row execute procedure partition_integer_insert_trigger_'||table_name||'();';
 
   for i in 0..options->'id_mask' loop

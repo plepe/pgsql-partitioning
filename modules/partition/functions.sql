@@ -218,3 +218,19 @@ BEGIN
   return true;
 END;
 $$ language plpgsql;
+
+create or replace function build_if_tree(in min int, in max int, in var text, in txt text) returns text as $$
+DECLARE
+  m int;
+BEGIN
+  if min=max then
+    return replace(txt, '%', cast(min as text))||';';
+  elsif min+1=max then
+    return 'if '||var||'='||min||' then '||replace(txt, '%', cast(min as text))||'; else '||replace(txt, '%', cast(max as text))||'; end if; ';
+  else
+    m=min+(max-min)/2;
+    return 'if '||var||'<='||m||' then '||build_if_tree(min, m, var, txt)||
+      ' else '||build_if_tree(m+1, max, var, txt)||' end if; ';
+  end if;
+END;
+$$ language plpgsql;
