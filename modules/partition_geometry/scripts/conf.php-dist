@@ -35,6 +35,9 @@ $part_tolerance=0.10;
 // total count / $part_count
 # $optimal_count=100000;
 
+// When saving quadrants, define a file name template
+$save_name="osm_line_2012apr_%d.csv";
+
 // Assign a color for each quadrant ID
 $render_color_by_id=true;
 
