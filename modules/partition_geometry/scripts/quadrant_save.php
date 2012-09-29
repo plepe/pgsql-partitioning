@@ -1,3 +1,4 @@
+#!/usr/bin/php
 <?
 require "conf.php";
 require "simple.php";
