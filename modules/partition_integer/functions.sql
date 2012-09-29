@@ -37,6 +37,17 @@ BEGIN
     perform partition_table_indexes(table_name, cast(i as text));
   end loop;
 
+  -- create query function
+  fun='create or replace function '||table_name||'(in id int8, in _where text default null, in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ ';
+  fun=fun||'declare r '||table_name||'%rowtype; sql text; part_id int; begin ';
+  fun=fun||'part_id=(id/'||(options->'id_div')||')&'||(options->'id_mask')||';';
+  fun=fun||'sql:=''select * from '||table_name||'_''||part_id||'' where "'||(options->'id_column')||'"=''||id; ';
+  fun=fun||'if _where is not null then sql=sql||'' and (''||_where||'')''; end if;';
+  -- fun=fun||'raise notice ''%'', sql; ';
+  fun=fun||'return query execute sql;';
+  fun=fun||'return; end; $f$ language plpgsql;';
+  execute fun;
+
   -- save list of current indexes
   for r in execute 'select * from pg_indexes where tablename='''||table_name||'''' loop
     index_def=array_append(index_def, r.indexdef);
