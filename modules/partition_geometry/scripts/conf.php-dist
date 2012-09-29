@@ -34,3 +34,16 @@ $part_tolerance=0.10;
 // What's our optimal quadrant object size? If null, it will be calculated from
 // total count / $part_count
 # $optimal_count=100000;
+
+// Assign a color for each quadrant ID
+$render_color_by_id=true;
+
+// Boost dark parts as to easier see quadrant colors
+$render_increase_count=5;
+
+// Should object count be color (if false, only colored quadrants will be
+// visible)
+$render_object_count=true;
+
+// Should the count of overlapping objects of the quadrants be drawn?
+$render_overlap_count=true;
