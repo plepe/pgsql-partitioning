@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION partition_integer_init_table(in table_name text, in o
 DECLARE
   r record;
   index_def text[]=Array[]::text[];
+  i int;
 BEGIN
   -- set default values
   options='id_div=>256, id_mask=>255, id_column=>id'||options;
@@ -20,8 +21,16 @@ BEGIN
   insert into partition_tables values (table_name, Array[]::text[], Array[]::text[], options);
 
   -- create trigger for insert statement
-  execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ BEGIN perform partition_integer_on_insert('''||table_name||''', NEW, '''||cast(options as text)||'''::hstore); return null; END; $f$ language plpgsql;';
+  -- execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ BEGIN perform partition_integer_on_insert('''||table_name||''', NEW); return null; END; $f$ language plpgsql;';
+  execute 'create or replace function partition_integer_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE part_id int8; BEGIN part_id=(NEW.'||(options->'id_column')||'/'||(options->'id_div')||')&'||(options->'id_mask')||'; execute ''insert into '||table_name||'_''||part_id||'' select $1.*'' using NEW; return null; END; $f$ language plpgsql;';
   execute 'create trigger partition_integer_insert_trigger_'||table_name||' before insert on '||table_name||' for each row execute procedure partition_integer_insert_trigger_'||table_name||'();';
+
+  for i in 0..options->'id_mask' loop
+    execute 'create table '||table_name||'_'||i||' () '||
+      ' inherits ('||table_name||');';
+
+    perform partition_table_indexes(table_name, cast(i as text));
+  end loop;
 
   -- save list of current indexes
   for r in execute 'select * from pg_indexes where tablename='''||table_name||'''' loop
@@ -58,38 +67,6 @@ BEGIN
 
   -- create indexes on table
   perform partition_table_indexes(table_name, part_id);
-
-  return true;
-END;
-$$ LANGUAGE plpgsql;
-
--- called from the insert-trigger ... does the actual insert
-CREATE OR REPLACE FUNCTION partition_integer_on_insert(in table_name text, in NEW anyelement, in options hstore) returns boolean as $$
-#variable_conflict use_variable
-DECLARE
-  part_id int8;
-  table_def record;
-  id_div int8;
-  id_mask int8;
-BEGIN
-  id_div:=cast(options->'id_div' as int8);
-  id_mask:=cast(options->'id_mask' as int8);
-
-  execute 'select $1.'||(options->'id_column') into part_id using NEW;
-  part_id=(part_id/id_div)&id_mask;
-
-  -- first insert the data into the temporary table
-  begin
-    execute 'insert into '||table_name||'_'||part_id||' select $1.*' using NEW;
-  exception when undefined_table then
-    execute 'create table '||table_name||'_'||part_id||' () '||
-      ' inherits ('||table_name||');';
-
-    perform partition_table_indexes(table_name, cast(part_id as text));
-
-    raise notice 'partition_integer: created subtable %_%', table_name, part_id;
-    execute 'insert into '||table_name||'_'||part_id||' select $1.*' using NEW;
-  end;
 
   return true;
 END;
