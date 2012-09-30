@@ -12,46 +12,49 @@
 -- the table needs to have a column 'way', a geometry column on which to 
 -- decide which subtable(s) to insert.
 -- TODO: configure column via options
-CREATE OR REPLACE FUNCTION parition_geometry_init_table(in table_name text, in options hstore default ''::hstore) returns boolean as $$
+CREATE OR REPLACE FUNCTION partition_geometry_init_table(in table_name text, in boundary_file text, in options hstore default ''::hstore) returns boolean as $$
 #variable_conflict use_variable
 DECLARE
   r record;
   index_def text[]=Array[]::text[];
+  i int;
+  geom geometry;
 BEGIN
   -- set default values
   options='size=>268435456, type=>only_leaf'||options;
 
-  -- add table to the list of parition_geometry_tables
-  insert into parition_geometry_tables values (table_name, options);
-
-  -- create trigger for insert statement
-  execute 'create or replace function parition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ BEGIN perform partition_geometry_on_insert('''||table_name||''', NEW); return null; END; $f$ language plpgsql;';
-  execute 'create trigger parition_geometry_insert_trigger_'||table_name||' before insert on '||table_name||' for each row execute procedure partition_geometry_insert_trigger_'||table_name||'();';
-
-  -- create first inherited table
-  execute 'create table '||table_name||'_1 () inherits ('||table_name||');';
-
-  -- create partition_geometry
-  execute 'create table '||table_name||'_partition_geometry ( path text not null, tags hstore not null default ''''::hstore );';
-  perform AddGeometryColumn(table_name||'_partition_geometry ', 'boundary', 900913, 'POLYGON', 2);
-  execute 'alter table '||table_name||'_partition_geometry add column table_id serial;';
-  execute 'insert into '||table_name||'_partition_geometry values ('''', '''', ST_MakeEnvelope(-20037508.34,-20037508.34,20037508.34,20037508.34, 900913));';
-  execute 'create index '||table_name||'_partition_geometry_boundary on '||table_name||'_partition_geometry using gist(boundary);';
-
-  -- function to extract way from a row
-  execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.way $f$ language sql;';
-
-  -- create query function
-  execute 'create or replace function '||table_name||'_query(in boundary geometry, in _where text default '''', in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile_query('''||table_name||''', boundary, _where, options); return query execute sql; return; end; $f$ language plpgsql;';
+  -- add table to the list of partition_tables
+  insert into partition_tables values (table_name, null, null, options);
 
   -- save list of current indexes
   for r in execute 'select * from pg_indexes where tablename='''||table_name||'''' loop
     index_def=array_append(index_def, r.indexdef);
   end loop;
-  update partition_geometry_tables
+  update partition_tables
     set indexes=index_def
-    where partition_geometry_tables.table_name=table_name;
-  perform partition_geometry_table_indexes(table_name, 1);
+    where partition_tables.table_name=table_name;
+
+  -- create partition_geometry table
+  execute 'create table '||table_name||'_partition_geometry ( );';
+  perform AddGeometryColumn(table_name||'_partition_geometry', 'boundary', 900913, 'POLYGON', 2);
+  execute 'copy '||table_name||'_partition_geometry FROM '''||boundary_file||E'''';
+  execute 'alter table '||table_name||'_partition_geometry add column table_id serial';
+  execute 'alter table '||table_name||'_partition_geometry add primary key(table_id)';
+  execute 'create index '||table_name||'_partition_geometry_boundary on '||table_name||'_partition_geometry using gist(boundary);';
+
+  -- iterate through all quadrants
+  for r in execute 'select * from '||table_name||'_partition_geometry' loop
+    i=r.table_id;
+
+    -- create sub-table
+    execute 'create table '||table_name||'_'||i||' () inherits ('||table_name||');';
+
+    -- create indexes
+    perform partition_table_indexes(table_name, cast(i as text));
+  end loop;
+
+  -- create functions and triggers
+  perform partition_geometry_update_functions(table_name);
 
   -- move current data from table to first-subtable
   execute 'insert into '||table_name||' (select * from only '||table_name||');';
@@ -68,7 +71,7 @@ declare
   ret record;
   table_def record;
 begin
-  select * into table_def from partition_geometry_tables where partition_geometry_tables.table_name=table_name;
+  select * into table_def from partition_tables where partition_tables.table_name=table_name;
 
   if way is null then
     return null;
@@ -112,101 +115,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- check if a subtable needs a split, and do the split right away.
-CREATE OR REPLACE FUNCTION partition_geometry_check_split(in table_name text, in table_list int2[]) returns void as $$
-#variable_conflict use_variable
-DECLARE
-  table_size int;
-  table_def record;
-  this record;
-  new record;
-  parts geometry[];
-BEGIN
-  select * into table_def from partition_geometry_tables where partition_geometry_tables.table_name=table_name;
-
-  for i in array_lower(table_list, 1)..array_upper(table_list, 1) loop
-    -- get size. if size too big, start a split.
-    select pg_relation_size(table_name||'_'||table_list[i]) into table_size;
-    if table_size>cast(table_def.options->'size' as int) then
-
-      -- get table -> this
-      execute 'select * from '||table_name||'_partition_geometry where table_id='||table_list[i]||';' into this;
-
-      if table_def.options->'type'='full_quad' and this.tags?'parent' then
-	exit;
-      end if;
-	
-      raise notice 'split table %_% - path: %', table_name, table_list[i], this.path;
-
-      -- calculate parts
-      parts=Array[
-	ST_TransScale(this.boundary,
-	  ST_Xmin(this.boundary), ST_Ymin(this.boundary), 0.5, 0.5),
-	ST_TransScale(this.boundary,
-	  ST_Xmin(this.boundary), ST_Ymax(this.boundary), 0.5, 0.5),
-	ST_TransScale(this.boundary,
-	  ST_Xmax(this.boundary), ST_Ymax(this.boundary), 0.5, 0.5),
-	ST_TransScale(this.boundary,
-	  ST_Xmax(this.boundary), ST_Ymin(this.boundary), 0.5, 0.5)
-	];
-
-      for i in 1..4 loop
-	-- create entry in XXX_partition_geometry
-	execute 'insert into '||table_name||'_partition_geometry values ('||
-	  ''''||this.path||i||''', '||
-	  '''''::hstore, '||
-	  ''''||cast(parts[i] as text)||''');';
-	execute 'select * from '||table_name||'_partition_geometry where path='''||this.path||i||'''' into new;
-
-        -- create new table
-	execute 'create table '||table_name||'_'||new.table_id||' () inherits ('||table_name||');';
-	raise notice 'part path=% table_id=%', new.path, new.table_id;
-
-	-- insert all matching objects into new table
-	if table_def.options->'type'='only_leaf' then
-	  execute 'insert into '||table_name||'_'||new.table_id||
-	    ' (select * from '||table_name||'_'||this.table_id||' where '||
-	    table_name||'_'||this.table_id||'.way && '''||
-	    cast(parts[i] as text)||''' and '||
-	    'ST_Distance('||table_name||'_'||this.table_id||'.way, '||
-	    ''''||cast(parts[i] as text)||''')=0)';
-	elsif table_def.options->'type'='full_quad' then
-	  execute 'insert into '||table_name||'_'||new.table_id||
-	    ' (select * from '||table_name||'_'||this.table_id||' where '||
-	    table_name||'_'||this.table_id||'.way && '''||
-	    cast(parts[i] as text)||''' and '||
-	    'ST_Within('||table_name||'_'||this.table_id||'.way, '||
-	    ''''||cast(parts[i] as text)||'''))';
-	  execute 'delete from '||table_name||'_'||this.table_id||
-	    ' where '||table_name||'_'||this.table_id||'.way && '''||
-	    cast(parts[i] as text)||''' and '||
-	    'ST_Within('||table_name||'_'||this.table_id||'.way, '||
-	    ''''||cast(parts[i] as text)||''')';
-	end if;
-
-	-- create indexes
-	perform partition_geometry_table_indexes(table_name, new.table_id);
-      end loop;
-
-      -- empty old table and marked as droppable (boundary is null). don't
-      -- drop right now, because this would block all selects on this table
-      -- until transaction has finished
-      if table_def.options->'type'='only_leaf' then
-	execute 'delete from '||table_name||'_'||this.table_id||';';
-	execute 'update '||table_name||'_partition_geometry set boundary=null '||
-	  'where table_id='||this.table_id||';';
-      elsif table_def.options->'type'='full_quad' then
-	execute 'update '||table_name||'_partition_geometry set '||
-	  'tags=tags||''parent=>1'' where table_id='||this.table_id||';';
-      end if;
-
-      raise notice 'finish split';
-    end if;
-
-  end loop;
-END;
-$$ LANGUAGE plpgsql;
-
 -- compiles a query on a table as used by the XXX_query() function
 create or replace function partition_geometry_compile_query(in table_name text, in boundary geometry, in _where text default '', in options hstore default ''::hstore) returns text as $$
 #variable_conflict use_variable
@@ -235,74 +143,6 @@ BEGIN
 END;
 $$ language plpgsql;
 
--- removes unneeded tables
-create or replace function partition_geometry_vacuum(in table_name text) returns boolean as $$
-#variable_conflict use_variable
-DECLARE
-  r record;
-  sql text;
-  tables text[]=Array[]::text[];
-BEGIN
-  -- drop tables which are not used anymore (boundary is null)
-  for r in execute 'select * from '||table_name||'_partition_geometry where boundary is null;' loop
-    raise notice 'drop table %_%', table_name, r.table_id;
-    execute 'drop table '||table_name||'_'||r.table_id||';';
-  end loop;
-  execute 'delete from '||table_name||'_partition_geometry where boundary is null;';
-
-  return true;
-END;
-$$ language plpgsql;
-
--- add indexes to all sub-tables
-create or replace function partition_geometry_add_index(in table_name text, in index_def text) returns boolean as $$
-#variable_conflict use_variable
-DECLARE
-  r record;
-BEGIN
-  update partition_geometry_tables
-    set indexes=array_append(indexes, index_def)
-    where partition_geometry_tables.table_name=table_name;
-
-  for r in execute 'select * from '||table_name||'_partition_geometry;' loop
-    perform partition_geometry_add_index_table(table_name, r.table_id, index_def);
-  end loop;
-
-  return true;
-END;
-$$ language plpgsql;
-
--- create an index on a subtable
-create or replace function partition_geometry_add_index_table(in table_name text, in table_id int, in index_def text) returns boolean as $$
-#variable_conflict use_variable
-DECLARE
-BEGIN
-  execute replace(index_def, table_name, table_name||'_'||table_id);
-
-  return true;
-END;
-$$ language plpgsql;
-
--- create all indexes for a (new) table
-create or replace function partition_geometry_table_indexes(in table_name text, in table_id int) returns boolean as $$
-#variable_conflict use_variable
-DECLARE
-  table_def record;
-  i int;
-BEGIN
-  select * into table_def from partition_geometry_tables where partition_geometry_tables.table_name=table_name;
-  if table_def.indexes=Array[]::text[] then
-    return true;
-  end if;
-
-  for i in array_lower(table_def.indexes, 1)..array_upper(table_def.indexes, 1) loop
-    perform partition_geometry_add_index_table(table_name, table_id, table_def.indexes[i]);
-  end loop;
-
-  return true;
-END;
-$$ language plpgsql;
-
 -- remove all traces of a table
 create or replace function partition_geometry_drop_table(in table_name text) returns boolean as $$
 #variable_conflict use_variable
@@ -310,8 +150,38 @@ DECLARE
 BEGIN
   execute 'drop table '||table_name||' cascade;';
   execute 'drop table '||table_name||'_partition_geometry';
-  execute 'delete from partition_geometry_tables where table_name='||quote_nullable(table_name)||';';
+  execute 'delete from partition_tables where table_name='||quote_nullable(table_name)||';';
 
   return true;
 END;
 $$ language plpgsql;
+
+-- (re-)create all functions for table_name
+CREATE OR REPLACE FUNCTION partition_geometry_update_functions(in table_name text) returns boolean as $$
+#variable_conflict use_variable
+DECLARE
+  fun text;
+  options hstore;
+BEGIN
+  select partition_tables.options into options from partition_tables where partition_tables.table_name=table_name;
+
+  -- create insert trigger function
+  fun='create or replace function partition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE ';
+  fun=fun||' BEGIN ';
+  fun=fun||'perform partition_geometry_on_insert('''||table_name||''', NEW); return null; END;';
+  fun=fun||' $f$ language plpgsql;';
+  execute fun;
+
+  -- set insert trigger
+  execute 'drop trigger if exists partition_geometry_insert_trigger_'||table_name||' on '||table_name||';';
+  execute 'create trigger partition_geometry_insert_trigger_'||table_name||' before insert on '||table_name||' for each row execute procedure partition_geometry_insert_trigger_'||table_name||'();';
+
+  -- function to extract way from a row
+  execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.way $f$ language sql;';
+
+  -- create query function
+  execute 'create or replace function '||table_name||'_query(in boundary geometry, in _where text default '''', in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile_query('''||table_name||''', boundary, _where, options); return query execute sql; return; end; $f$ language plpgsql;';
+
+  return true;
+END;
+$$ LANGUAGE plpgsql;
