@@ -1,6 +1,6 @@
 The osm_line_2012apr_*.csv|9009123|4326 are based on an OpenStreetMap database
 table containing all non-closed ways dating back to April 1st, 2012. It was
-using version a2369fb of this repository. The used configuration includes the
+using version 3cabf16 of this repository. The used configuration includes the
 following options:
 
 {{{
