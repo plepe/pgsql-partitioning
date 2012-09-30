@@ -1,6 +1,6 @@
-The osm_line_2012apr_*.txt are based on an OpenStreetMap database table
-containing all non-closed ways dating back to April 1st, 2012. It was using
-version a2369fb of this repository. The used configuration includes the
+The osm_line_2012apr_*.csv|9009123|4326 are based on an OpenStreetMap database
+table containing all non-closed ways dating back to April 1st, 2012. It was
+using version a2369fb of this repository. The used configuration includes the
 following options:
 
 {{{
@@ -11,4 +11,5 @@ $part_tolerance=0.10;
 $optimal_count=1000000;
 }}}
 
-The files contain a boundary for each quadrant and an object_count based on the bounding_boxes of the objects in said database in SRID 900913. The number in the file name indicate the count of quadrants in the files.
+* The csv files contain a the x_min (and similar), the object count and the assessed quality for each quadrant based on the bounding_boxes of the objects in said database in SRID 900913. The number in the file name indicate the count of quadrants in the files.
+* The .900913 and .4326 files contain a list of boundaries, loadable by PostgreSQL \copy command.
