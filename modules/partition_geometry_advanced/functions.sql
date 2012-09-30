@@ -42,7 +42,7 @@ BEGIN
   execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.way $f$ language sql;';
 
   -- create query function
-  execute 'create or replace function '||table_name||'_query(in boundary geometry, in _where text default '''', in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile_query('''||table_name||''', boundary, _where, options); return query execute sql; return; end; $f$ language plpgsql;';
+  execute 'create or replace function '||table_name||'(in boundary geometry, in _where text default '''', in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile('''||table_name||''', boundary, _where, options); return query execute sql; return; end; $f$ language plpgsql;';
 
   -- save list of current indexes
   for r in execute 'select * from pg_indexes where tablename='''||table_name||'''' loop
@@ -207,7 +207,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- compiles a query on a table as used by the XXX_query() function
+-- compiles a query on a table as used by the XXX() function
 create or replace function partition_geometry_compile_query(in table_name text, in boundary geometry, in _where text default '', in options hstore default ''::hstore) returns text as $$
 #variable_conflict use_variable
 DECLARE
