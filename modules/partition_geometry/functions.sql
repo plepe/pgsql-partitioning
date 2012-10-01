@@ -119,7 +119,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- compiles a query on a table as used by the XXX() function
-create or replace function partition_geometry_compile_query(in table_name text, in boundary geometry, in _where text default '', in options hstore default ''::hstore) returns text as $$
+create or replace function partition_geometry_compile_query(in table_name text, in bbox geometry, in where_expr text default null, in options hstore default ''::hstore) returns text as $$
 #variable_conflict use_variable
 DECLARE
   r record;
@@ -127,18 +127,18 @@ DECLARE
   tables text[]=Array[]::text[];
 BEGIN
   -- get list of tables matching the boundary of the query
-  for r in execute 'select * from '||table_name||'_partition_geometry where boundary && '||quote_nullable(cast(boundary as text))||';' loop
+  for r in execute 'select * from '||table_name||'_partition_geometry where boundary && '||quote_nullable(cast(bbox as text))||';' loop
     tables=array_append(tables, 'select * from '||table_name||'_'||r.table_id);
   end loop;
 
   -- join tables with union
   sql='select * from ('||array_to_string(tables, ' union ')||') a';
 
-  sql=sql||' where way && '||quote_nullable(cast(boundary as text));
+  sql=sql||' where way && '||quote_nullable(cast(bbox as text));
 
   -- if there's a where specified concatenate to query
-  if _where!='' then
-    sql=sql||' and '||_where;
+  if where_expr is not null then
+    sql=sql||' and '||where_expr;
   end if;
 
   -- raise notice 'sql: %', sql;
@@ -183,7 +183,7 @@ BEGIN
   execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.way $f$ language sql;';
 
   -- create query function
-  execute 'create or replace function '||table_name||'(in boundary geometry, in _where text default '''', in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile('''||table_name||''', boundary, _where, options); return query execute sql; return; end; $f$ language plpgsql;';
+  execute 'create or replace function '||table_name||'(in bbox geometry, in where_expr text default null, in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile_query('''||table_name||''', bbox, where_expr, options); return query execute sql; return; end; $f$ language plpgsql;';
 
   return true;
 END;
