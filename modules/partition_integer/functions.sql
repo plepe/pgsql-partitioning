@@ -37,6 +37,9 @@ BEGIN
     perform partition_table_indexes(table_name, cast(i as text));
   end loop;
 
+  -- update parts_id column of partition_tables
+  execute 'update partition_tables set parts_id=(select array_agg(cast(i as text)) from generate_series(0, '||(options->'id_mask')||') i) where table_name='||table_name||';';
+
   -- create functions and triggers
   perform partition_integer_update_functions(table_name);
 

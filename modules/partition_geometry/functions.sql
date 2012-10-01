@@ -53,6 +53,9 @@ BEGIN
     perform partition_table_indexes(table_name, cast(i as text));
   end loop;
 
+  -- update parts_id column of partition_tables
+  execute 'update partition_tables set parts_id=(select array_agg(cast(table_id as text)) from '||table_name||'_partition_geometry) where table_name='''||table_name||''';';
+
   -- create functions and triggers
   perform partition_geometry_update_functions(table_name);
 
