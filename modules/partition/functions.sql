@@ -207,6 +207,28 @@ BEGIN
 END;
 $$ language plpgsql;
 
+-- add indexes to all sub-tables
+create or replace function partition_add_index(in table_name text, in index_def text) returns boolean as $$
+#variable_conflict use_variable
+DECLARE
+  r text;
+  parts_id text[];
+BEGIN
+  update partition_tables
+    set indexes=array_append(indexes, index_def)
+    where partition_tables.table_name=table_name;
+
+  select partition_tables.parts_id into parts_id from partition_tables
+    where partition_tables.table_name=table_name;
+
+  foreach r in array parts_id loop
+    perform partition_add_index_table(table_name, r, index_def);
+  end loop;
+
+  return true;
+END;
+$$ language plpgsql;
+
 -- remove all traces of a table
 create or replace function quadtree_drop_table(in table_name text) returns boolean as $$
 #variable_conflict use_variable
