@@ -2,6 +2,7 @@
 -- parameters:
 -- 1. name of the table (text)
 -- 2. options (hstore)
+--	srid		srid of the way column, defaults to 900913
 --
 -- the table needs to have a column 'way', a geometry column on which to 
 -- decide which subtable(s) to insert.
@@ -15,7 +16,7 @@ DECLARE
   geom geometry;
 BEGIN
   -- set default values
-  options=''||options;
+  options='srid=>900913'||options;
 
   -- add table to the list of partition_tables
   insert into partition_tables values (table_name, null, null, options);
@@ -30,7 +31,7 @@ BEGIN
 
   -- create partition_geometry table
   execute 'create table '||table_name||'_partition_geometry ( );';
-  perform AddGeometryColumn(table_name||'_partition_geometry', 'boundary', 900913, 'POLYGON', 2);
+  perform AddGeometryColumn(table_name||'_partition_geometry', 'boundary', cast(options->'srid' as int), 'POLYGON', 2);
   execute 'copy '||table_name||'_partition_geometry FROM '''||boundary_file||E'''';
   execute 'alter table '||table_name||'_partition_geometry add column table_id serial';
   execute 'alter table '||table_name||'_partition_geometry add primary key(table_id)';
