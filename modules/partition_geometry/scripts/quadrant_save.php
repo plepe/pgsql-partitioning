@@ -22,11 +22,33 @@ while($elem=pg_fetch_assoc($res)) {
 
   fwrite($f_csv, "{$elem['x_min']}\t{$elem['y_min']}\t{$elem['x_max']}\t{$elem['y_max']}\t{$elem['count']}\t{$elem['assess']}\n");
 
-  $res_bbox=sql_query("select ST_MakeEnvelope($x_min, $y_min, $x_max, $y_max, $SRID) as geom_srid, ST_Transform(ST_MakeEnvelope($x_min, $y_min, $x_max, $y_max, $SRID), 4326) as geom_4326");
+  $res_bbox=sql_query(<<<EOT
+select geom as geom_srid,
+  XMin(ST_Transform(geom, 4326)) as x_min,
+  YMin(ST_Transform(geom, 4326)) as y_min,
+  XMax(ST_Transform(geom, 4326)) as x_max,
+  YMax(ST_Transform(geom, 4326)) as y_max
+from (select ST_MakeEnvelope($x_min, $y_min, $x_max, $y_max, $SRID) as geom) orig
+EOT
+);
   $elem_bbox=pg_fetch_assoc($res_bbox);
 
   fwrite($f_srid, "{$elem_bbox['geom_srid']}\n");
-  fwrite($f_4326, "{$elem_bbox['geom_4326']}\n");
+
+  // hack,  snap outer boundaries to longitude +/- 180 resp. latitude +/- 90.
+  if($elem_bbox['x_min']==-179.999999974944)
+    $elem_bbox['x_min']=-180;
+  if($elem_bbox['x_max']==179.999999974944)
+    $elem_bbox['x_max']=180;
+  if($elem_bbox['y_min']==-85.0511287776451)
+    $elem_bbox['y_min']=-90;
+  if($elem_bbox['y_max']==85.0511287776451)
+    $elem_bbox['y_max']=90;
+
+  $res_bbox1=sql_query("select ST_MakeEnvelope({$elem_bbox['x_min']}, {$elem_bbox['y_min']}, {$elem_bbox['x_max']}, {$elem_bbox['y_max']}, 4326) as geom_4326");
+  $elem_bbox1=pg_fetch_assoc($res_bbox1);
+
+  fwrite($f_4326, "{$elem_bbox1['geom_4326']}\n");
 }
 
 fclose($f_csv);
