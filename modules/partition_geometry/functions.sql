@@ -2,12 +2,6 @@
 -- parameters:
 -- 1. name of the table (text)
 -- 2. options (hstore)
---      'size'=>size when to split a quadrant (bytes, default: 256 MB)
---      'type'=>
---         'only_leaf' ... separate table only in leaf-tables, overlapping
---                         objects will be duplicated to each part
---         'full_quad' ... keep a full partition_geometry, with overlapping objects
---                         in the parent parts -> more tables need querying
 --
 -- the table needs to have a column 'way', a geometry column on which to 
 -- decide which subtable(s) to insert.
@@ -21,7 +15,7 @@ DECLARE
   geom geometry;
 BEGIN
   -- set default values
-  options='size=>268435456, type=>only_leaf'||options;
+  options=''||options;
 
   -- add table to the list of partition_tables
   insert into partition_tables values (table_name, null, null, options);
@@ -74,21 +68,13 @@ declare
   ret record;
   table_def record;
 begin
-  select * into table_def from partition_tables where partition_tables.table_name=table_name;
-
   if way is null then
     return null;
   end if;
 
-  if table_def.options->'type'='only_leaf' then
-    for ret in execute 'select array_agg(table_id) as c from '||
-      table_name||'_partition_geometry where boundary && '''||cast(way as text)||''' and ST_Distance(boundary, '''||cast(way as text)||''')=0;' loop
-    end loop;
-  elsif table_def.options->'type'='full_quad' then
-    for ret in execute 'select Array[table_id] as c from '||
-      table_name||'_partition_geometry where ST_Within('''||cast(way as text)||''', boundary) order by length(path) desc limit 1;' loop
-    end loop;
-  end if;
+  for ret in execute 'select array_agg(table_id) as c from '||
+    table_name||'_partition_geometry where boundary && '''||cast(way as text)||''' and ST_Distance(boundary, '''||cast(way as text)||''')=0;' loop
+  end loop;
 
   return ret.c;
 end;
