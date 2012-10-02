@@ -112,8 +112,6 @@ BEGIN
     execute 'insert into '||table_name||'_'||table_list[i]||' select $1.*' using NEW;
   end loop;
 
-  perform partition_geometry_check_split(table_name, table_list);
-
   return true;
 END;
 $$ LANGUAGE plpgsql;
