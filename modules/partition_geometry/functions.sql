@@ -132,12 +132,11 @@ BEGIN
 
   -- create insert trigger function
   fun='CREATE OR REPLACE FUNCTION partition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE ';
-  fun=fun||'way geometry; table_list int2[]; i int2; ';
+  fun=fun||'r record; ';
   fun=fun||'BEGIN ';
-  fun=fun||'table_list:='||table_name||'_get_table_list(NEW.way); ';
-  fun=fun||'if table_list is null then return null; end if; ';
-  fun=fun||'foreach i in array table_list loop ';
-  fun=fun||'execute ''insert into '||table_name||'_''||i||'' select $1.*'' using NEW; ';
+  fun=fun||'if NEW.way is null then return null; end if; ';
+  fun=fun||'for r in select table_id i from '||table_name||'_partition_geometry where boundary && NEW.way and ST_Distance(boundary, NEW.way)=0 loop ';
+  fun=fun||build_if_tree(1, 48, 'r.i', 'insert into '||table_name||'_% values (NEW.*)');
   fun=fun||'end loop; ';
   fun=fun||'return null; END; $f$ LANGUAGE plpgsql;';
   execute fun;
