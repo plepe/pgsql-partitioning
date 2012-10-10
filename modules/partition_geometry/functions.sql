@@ -73,9 +73,8 @@ begin
     return null;
   end if;
 
-  for ret in execute 'select array_agg(table_id) as c from '||
-    table_name||'_partition_geometry where boundary && '''||cast(way as text)||''' and ST_Distance(boundary, '''||cast(way as text)||''')=0;' loop
-  end loop;
+  execute 'select array_agg(table_id) as c from '||
+    table_name||'_partition_geometry where boundary && '''||cast(way as text)||''' and ST_Distance(boundary, '''||cast(way as text)||''')=0;' into ret;
 
   return ret.c;
 end;
@@ -166,6 +165,15 @@ BEGIN
 
   -- function to extract way from a row
   execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.way $f$ language sql;';
+
+  -- get_table_list function
+  fun='create or replace function '||table_name||'_get_table_list(in way geometry) returns int2[] as $f$ DECLARE ';
+  fun=fun||'ret int2[]; ';
+  fun=fun||'BEGIN ';
+  fun=fun||'if way is null then return null; end if; ';
+  fun=fun||'select array_agg(table_id) into ret from '||table_name||'_partition_geometry where boundary && way and ST_Distance(boundary, way)=0; ';
+  fun=fun||'return ret; end; $f$ language plpgsql;';
+  execute fun;
 
   -- create query function
   execute 'create or replace function '||table_name||'(in bbox geometry, in where_expr text default null, in options hstore default ''''::hstore) returns setof '||table_name||' as $f$ declare r '||table_name||'%rowtype; sql text; begin sql:=partition_geometry_compile_query('''||table_name||''', bbox, where_expr, options); return query execute sql; return; end; $f$ language plpgsql;';
