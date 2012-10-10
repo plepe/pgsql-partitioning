@@ -10,10 +10,8 @@ Example:
   select AddGeometryColumn('test', 'way', 900913, 'GEOMETRY', 2);
 
   -- convert table into a partitioned table
-  select partition_geometry_init_table('test');
+  select partition_geometry_init_table('test', '/path/to/boundary_file.900913', 'geom_column=>way, srid=>900913');
   
-  -- TODO: currently the old content is not moved to the subtables yet
-
   -- insert something into the table:
   insert into test values ('foo', 'foo=>bar', ST_Point(5, 5));
   -- a message "INSERT 0 0" will be written to stdout ... this is a known 
@@ -27,23 +25,27 @@ Example:
 
   -- place a query on the table with "speedup" - this only queries the
   -- subtables which can hold the object(s):
-  select * from test_query(ST_MakeEnvelope(-10, -10, 10, 10, 900913), $$tags @> 'foo=>bar'$$);
+  select * from test(ST_MakeEnvelope(-10, -10, 10, 10, 900913), $$tags @> 'foo=>bar'$$);
   -- use $$ instead of ', so you don't have to double quote inner '
 
-The following tables and function will be created:
+The following tables and functions will be created:
   table 'test'               ... the original table
-  table 'test_quadtree'      ... a list of all partitions of test
+  table 'test_partition_geometry' ... a list of all partitions of test
   tables 'test_X'            ... where X are numbers -> the partitions
-  function 'test_query(boundary, where, options)'
-			     ... place a query on test
+  function 'test(boundary, where, options)'
+	 ... place a query on test. only a bounding box check will be done
+	     (with &&), so be aware that this function might return objects
+	     actually outside the boundary but with overlapping bounding boxes.
+             where might be empty.
+	     currently no options are supported.
+  function 'test_get_table_list(geometry)'
+         ... returns all partitions which intersect the geometry
 
 The following general tables and functions are available:
-  table 'parition_geometry_tables'
+  table 'partition_tables'
                              ... list of all tables which are partitioned
-  function 'partition_geometry_init_table(table_name, options)'
+  function 'partition_geometry_init_table(table_name, path to boundary file, options)'
                              ... initialize partitioning for a table
-  function 'parititon_geometry_vacuum(table_name)'
-                             ... removes tables which are no longer needed
   function 'partition_geometry_add_index(table_name, def)'
 			     ... create an index on all tables. supply
 				 defintion as it would fit for the original
