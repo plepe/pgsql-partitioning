@@ -250,19 +250,46 @@ $$ language plpgsql;
 -- txt: code block which should be executed, % will be replaced by the value
 --
 -- Example: build_if_tree(1, 5, 'i', 'insert into foo_% values (NEW.*)');
--- returns: if i<=3 then if i<=2 then if i=1 then insert into foo_1 values (NEW.*); else insert into foo_2 values (NEW.*); end if;  else insert into foo_3 values (NEW.*); end if;  else if i=4 then insert into foo_4 values (NEW.*); else insert into foo_5 values (NEW.*); end if;  end if;
-create or replace function build_if_tree(in min int, in max int, in var text, in txt text) returns text as $$
+-- Returns:
+-- if i<=3 then
+--   if i<=2 then
+--     if i=1 then
+--       insert into foo_1 values (NEW.*);
+--     else
+--       insert into foo_2 values (NEW.*);
+--     end if;
+--   else
+--     insert into foo_3 values (NEW.*);
+--   end if;
+-- else
+--   if i=4 then
+--     insert into foo_4 values (NEW.*);
+--   else
+--     insert into foo_5 values (NEW.*);
+--   end if;
+-- end if;
+create or replace function build_if_tree(in min int, in max int, in var text, in txt text, in indent text default '') returns text as $$
 DECLARE
   m int;
 BEGIN
   if min=max then
-    return replace(txt, '%', cast(min as text))||';';
+    return
+      indent||replace(txt, '%', cast(min as text))||E';';
   elsif min+1=max then
-    return 'if '||var||'='||min||' then '||replace(txt, '%', cast(min as text))||'; else '||replace(txt, '%', cast(max as text))||'; end if; ';
+    return
+      indent||'if '||var||'='||min||E' then\n'||
+      indent||'  '||replace(txt, '%', cast(min as text))||E';\n'||
+      indent||E'else\n'||
+      indent||'  '||replace(txt, '%', cast(max as text))||E';\n'||
+      indent||E'end if;';
   else
     m=min+(max-min)/2;
-    return 'if '||var||'<='||m||' then '||build_if_tree(min, m, var, txt)||
-      ' else '||build_if_tree(m+1, max, var, txt)||' end if; ';
+    return
+      indent||'if '||var||'<='||m||E' then\n'||
+      build_if_tree(min, m, var, txt, indent||'  ')||E'\n'||
+      indent||E'else\n'||
+      build_if_tree(m+1, max, var, txt, indent||'  ')||E'\n'||
+      indent||E'end if;';
   end if;
 END;
 $$ language plpgsql;
