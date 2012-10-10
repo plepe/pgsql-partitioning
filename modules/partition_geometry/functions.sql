@@ -3,6 +3,7 @@
 -- 1. name of the table (text)
 -- 2. options (hstore)
 --	srid		srid of the way column, defaults to 900913
+--      geom_column	name of the geometry column, defaults to 'way'
 --
 -- the table needs to have a column 'way', a geometry column on which to 
 -- decide which subtable(s) to insert.
@@ -16,7 +17,7 @@ DECLARE
   geom geometry;
 BEGIN
   -- set default values
-  options='srid=>900913'||options;
+  options='srid=>900913, geom_column=>way'||options;
 
   -- add table to the list of partition_tables
   insert into partition_tables values (table_name, null, null, options);
@@ -87,7 +88,10 @@ DECLARE
   r record;
   sql text;
   tables text[]=Array[]::text[];
+  table_def record;
 BEGIN
+  select * into table_def from partition_tables where partition_tables.table_name=table_name;
+
   -- get list of tables matching the boundary of the query
   for r in execute 'select * from '||table_name||'_partition_geometry where boundary && '||quote_nullable(cast(bbox as text))||';' loop
     tables=array_append(tables, 'select * from '||table_name||'_'||r.table_id);
@@ -96,7 +100,7 @@ BEGIN
   -- join tables with union
   sql='select * from ('||array_to_string(tables, ' union ')||') a';
 
-  sql=sql||' where way && '||quote_nullable(cast(bbox as text));
+  sql=sql||' where '||(table_def.options->'geom_column')||' && '||quote_nullable(cast(bbox as text));
 
   -- if there's a where specified concatenate to query
   if where_expr is not null then
@@ -134,8 +138,8 @@ BEGIN
   fun='CREATE OR REPLACE FUNCTION partition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE ';
   fun=fun||'r record; ';
   fun=fun||'BEGIN ';
-  fun=fun||'if NEW.way is null then return null; end if; ';
-  fun=fun||'for r in select table_id i from '||table_name||'_partition_geometry where boundary && NEW.way and ST_Distance(boundary, NEW.way)=0 loop ';
+  fun=fun||'if NEW.'||(table_def.options->'geom_column')||' is null then return null; end if; ';
+  fun=fun||'for r in select table_id i from '||table_name||'_partition_geometry where boundary && NEW.'||(table_def.options->'geom_column')||' and ST_Distance(boundary, NEW.'||(table_def.options->'geom_column')||')=0 loop ';
   fun=fun||build_if_tree(1, (select max(cast(i as int2)) from unnest(table_def.parts_id) i), 'r.i', 'insert into '||table_name||'_% values (NEW.*)');
   fun=fun||'end loop; ';
   fun=fun||'return null; END; $f$ LANGUAGE plpgsql;';
@@ -146,7 +150,7 @@ BEGIN
   execute 'create trigger partition_geometry_insert_trigger_'||table_name||' before insert on '||table_name||' for each row execute procedure partition_geometry_insert_trigger_'||table_name||'();';
 
   -- function to extract way from a row
-  execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.way $f$ language sql;';
+  execute 'create or replace function partition_geometry_get_way('||table_name||') returns geometry as $f$ select $1.'||(table_def.options->'geom_column')||' $f$ language sql;';
 
   -- get_table_list function
   fun='create or replace function '||table_name||'_get_table_list(in way geometry) returns int2[] as $f$ DECLARE ';
