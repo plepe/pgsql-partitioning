@@ -126,9 +126,9 @@ CREATE OR REPLACE FUNCTION partition_geometry_update_functions(in table_name tex
 #variable_conflict use_variable
 DECLARE
   fun text;
-  options hstore;
+  table_def record;
 BEGIN
-  select partition_tables.options into options from partition_tables where partition_tables.table_name=table_name;
+  select * into table_def from partition_tables where partition_tables.table_name=table_name;
 
   -- create insert trigger function
   fun='CREATE OR REPLACE FUNCTION partition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE ';
@@ -136,7 +136,7 @@ BEGIN
   fun=fun||'BEGIN ';
   fun=fun||'if NEW.way is null then return null; end if; ';
   fun=fun||'for r in select table_id i from '||table_name||'_partition_geometry where boundary && NEW.way and ST_Distance(boundary, NEW.way)=0 loop ';
-  fun=fun||build_if_tree(1, 48, 'r.i', 'insert into '||table_name||'_% values (NEW.*)');
+  fun=fun||build_if_tree(1, (select max(cast(i as int2)) from unnest(table_def.parts_id) i), 'r.i', 'insert into '||table_name||'_% values (NEW.*)');
   fun=fun||'end loop; ';
   fun=fun||'return null; END; $f$ LANGUAGE plpgsql;';
   execute fun;
