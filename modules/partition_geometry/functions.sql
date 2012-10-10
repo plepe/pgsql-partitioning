@@ -80,28 +80,6 @@ begin
 end;
 $$ language plpgsql;
 
--- called from the insert-trigger ... does the actual insert
-CREATE OR REPLACE FUNCTION partition_geometry_on_insert(in table_name text, in NEW anyelement) returns boolean as $$
-DECLARE
-  way geometry;
-  table_list int2[];
-  i int2;
-BEGIN
-  way:=partition_geometry_get_way(NEW);
-  table_list:=partition_geometry_get_table_list(table_name, way);
-
-  if table_list is null then
-    return false;
-  end if;
-
-  for i in array_lower(table_list, 1)..array_upper(table_list, 1) loop
-    execute 'insert into '||table_name||'_'||table_list[i]||' select $1.*' using NEW;
-  end loop;
-
-  return true;
-END;
-$$ LANGUAGE plpgsql;
-
 -- compiles a query on a table as used by the XXX() function
 create or replace function partition_geometry_compile_query(in table_name text, in bbox geometry, in where_expr text default null, in options hstore default ''::hstore) returns text as $$
 #variable_conflict use_variable
@@ -153,10 +131,15 @@ BEGIN
   select partition_tables.options into options from partition_tables where partition_tables.table_name=table_name;
 
   -- create insert trigger function
-  fun='create or replace function partition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE ';
-  fun=fun||' BEGIN ';
-  fun=fun||'perform partition_geometry_on_insert('''||table_name||''', NEW); return null; END;';
-  fun=fun||' $f$ language plpgsql;';
+  fun='CREATE OR REPLACE FUNCTION partition_geometry_insert_trigger_'||table_name||'() returns trigger as $f$ DECLARE ';
+  fun=fun||'way geometry; table_list int2[]; i int2; ';
+  fun=fun||'BEGIN ';
+  fun=fun||'table_list:='||table_name||'_get_table_list(NEW.way); ';
+  fun=fun||'if table_list is null then return null; end if; ';
+  fun=fun||'foreach i in array table_list loop ';
+  fun=fun||'execute ''insert into '||table_name||'_''||i||'' select $1.*'' using NEW; ';
+  fun=fun||'end loop; ';
+  fun=fun||'return null; END; $f$ LANGUAGE plpgsql;';
   execute fun;
 
   -- set insert trigger
